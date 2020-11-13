@@ -6,7 +6,7 @@ use std::collections::HashMap;
 /// 参数说明：
 /// file_path: 单个文件; total_file_path: 汇总文件； target_file_path: 要生成的文件路径；keyword_index：指定要进行对比的关键字所在的列数，从0开始;
 /// header：csv文件中是否含有标题行
-fn file_complementary_subset(file_path: &PathBuf, total_file_path: &PathBuf, target_file_path: &PathBuf, keyword_index: usize, header: bool) -> i32 {
+fn file_complementary_set(file_path: &PathBuf, total_file_path: &PathBuf, target_file_path: &PathBuf, keyword_index: usize, header: bool) -> i32 {
     // 生产目标输出文件的写指针、单个文件、汇总文件的指针
     let mut wtr = csv::WriterBuilder::new().has_headers(header).from_path(&target_file_path).unwrap();
     let mut rdr_total_file = csv::ReaderBuilder::new().has_headers(header).from_path(&total_file_path).unwrap();
@@ -49,10 +49,10 @@ fn file_complementary_subset(file_path: &PathBuf, total_file_path: &PathBuf, tar
         let file_record = total_file_hashmap.get(key);
         match file_record {
             Some(file_record) => {
-                wtr.write_record(file_record);
+                wtr.write_record(file_record).unwrap();
                 count += 1;
             },
-            _ => eprintln!("could not read file record"),
+            _ => eprintln!("could not get file record"),
         }
     }
     wtr.flush().unwrap();
@@ -64,9 +64,8 @@ fn file_complementary_subset(file_path: &PathBuf, total_file_path: &PathBuf, tar
 /// 参数说明：
 /// file_path:多个文件路径组成的vector, target_file_path：最终生成文件的路径；keyword_index：指定要进行对比的关键字所在的列数，从0开始;
 /// header：csv文件中是否含有标题行
-fn multiple_file_cross_unrepeat(file_path: Vec<PathBuf>, target_file_path: &PathBuf, keyword_index: usize, header: bool) -> i32 {
-    // 计数器，默认-1则没有任何写入
-    let mut write_flag: bool;
+fn multiple_file_union(file_path: Vec<PathBuf>, target_file_path: &PathBuf, keyword_index: usize, header: bool) -> i32 {
+    // 计数器，默认0则没有任何写入
     let mut count = 0;
 
     // 生产目标文件的指针，以及多个文件中第一个文件的读取指针
@@ -105,7 +104,7 @@ fn multiple_file_cross_unrepeat(file_path: Vec<PathBuf>, target_file_path: &Path
         let file_record = file_hashmap.get(key);
         match file_record {
             Some(file_record) => {
-                wtr.write_record(file_record);
+                wtr.write_record(file_record).unwrap();
                 count += 1;
             },
             _ => eprintln!("could not read file record"),
@@ -113,6 +112,79 @@ fn multiple_file_cross_unrepeat(file_path: Vec<PathBuf>, target_file_path: &Path
     } 
 
     wtr.flush().unwrap();
+
+    count
+}
+
+/// 用于多个文件之间交集
+/// 输出交集文件
+/// file_path:多个文件路径组成的vector, target_file_path：最终生成文件的路径；keyword_index：指定要进行对比的关键字所在的列数，从0开始;
+/// header：csv文件中是否含有标题行
+fn multiple_file_intersection(file_path: Vec<PathBuf>, target_file_path: &PathBuf, keyword_index: usize, header: bool) -> i32 {
+    // 计数器，默认0则没有任何写入
+    let mut count = 0;
+
+    // 生产目标文件的指针，以及多个文件中第一个文件的读取指针
+    let mut wtr = csv::WriterBuilder::new().has_headers(header).from_path(target_file_path).unwrap();
+    let mut rdr_first_file = csv::ReaderBuilder::new().has_headers(header).from_path(&file_path[0]).unwrap();
+    
+    // 如果包含行标题，则写入行标题
+    if header {
+        wtr.write_record(rdr_first_file.headers().unwrap()).unwrap();
+        wtr.flush().unwrap();
+    }
+
+    // 核心算法：
+    // 以第一个文件作为基础文件，递归求文件之间的交集，直至到最后一个文件
+    let mut compare_hashmap = HashMap::new();
+    for first_file_record in rdr_first_file.records() {
+        match first_file_record {
+            Ok(first_file_record) => {
+                let file_keyword: String = first_file_record[keyword_index].to_owned();
+                compare_hashmap.insert(file_keyword, first_file_record);
+            },
+            Err(_) => eprintln!("could not read file record"),
+        }
+    }
+
+
+    for file_index in 1..file_path.len() { 
+        let mut temp_hashmap = HashMap::new();
+        let mut rdr_file = csv::ReaderBuilder::new().has_headers(header).from_path(&file_path[file_index]).unwrap();
+
+        for file_record in rdr_file.records() {
+            match file_record {
+                Ok(file_record) => {
+                    let file_keyword: String = file_record[keyword_index].to_owned();
+                    if compare_hashmap.contains_key(&file_keyword) {
+                        temp_hashmap.insert(file_keyword, file_record);
+                    }
+                },
+                Err(_) => eprintln!("could not read file record"),
+            }
+        }
+        
+        // 转移临时hashmap作为对比的hashmap
+        // 判断如果没有了交集，则退出；如果到了最后一个文件，则把比较的结果输出文件
+        compare_hashmap = temp_hashmap.to_owned();
+        if compare_hashmap.is_empty() {
+            count = 0;
+            break;
+        } else if (file_index + 1) == file_path.len() {
+            for key in compare_hashmap.keys() {
+                let file_record = compare_hashmap.get(key);
+                match file_record {
+                    Some(file_record) => {
+                        wtr.write_record(file_record).unwrap();
+                        count += 1;
+                    },
+                    _ => eprintln!("could get file record"),
+                }
+            }
+            break;
+        }
+        temp_hashmap.clear();
+    }
 
     count
 }
@@ -139,10 +211,8 @@ fn search_keyword(keyword: Vec<&str>, file_path: &PathBuf, target_file_path: &Pa
         match record {
             Ok(record) => {
                 let query: &str = &record[search_index];
-                // println!("当前要搜索的关键字是{}", query);
                 for i in 0..keyword.len() {
                     if query.contains(keyword[i]) {
-                        println!("{}", keyword[i]);
                         wtr.write_record(&record).unwrap();
                         count += 1;
                         wtr.flush().unwrap();
@@ -158,26 +228,31 @@ fn search_keyword(keyword: Vec<&str>, file_path: &PathBuf, target_file_path: &Pa
 }
 
 fn main() {
-    // // 测试文件路径
+    // 测试文件路径
     let file_one_path = PathBuf::from("/Users/likongyang/Desktop/test_wenlv/chashuju_1.csv");
     let file_two_path = PathBuf::from("/Users/likongyang/Desktop/test_wenlv/chashuju_2.csv");
     // let total_file_path = PathBuf::from("/Users/likongyang/Desktop/test_wenlv/company_data.csv");
     let target_file_path = PathBuf::from("/Users/likongyang/Desktop/test_wenlv/target_file.csv");
     let file_path_vec = vec![file_one_path, file_two_path];
 
-    // // 搜索关键字
+    // 函数开始运行时间
+    let start_time = std::time::Instant::now();
+
+
+    // 搜索关键字
     // let keyword = vec!["测试", "test"];
 
-    // // 测试单个文件去重
-    let start_time = std::time::Instant::now();
-    // let count = file_complementary_subset(&file_one_path, &total_file_path, &target_file_path, 0, true);
-    
+    // 测试补集
+    // let count = file_complementary_set(&file_one_path, &total_file_path, &target_file_path, 0, true);
 
-    // // 测试多个文件之间的并集
-    let count = multiple_file_cross_unrepeat(file_path_vec, &target_file_path, 0, false);
+    // 测试多个文件之间的并集
+    // let count = multiple_file_union(file_path_vec, &target_file_path, 0, false);
 
-    // // 测试搜索指定的文件
+    // 测试搜索指定的文件
     // let count = search_keyword(keyword, &file_one_path, &target_file_path, false, 20);
+
+    // 测试交集
+    let count = multiple_file_intersection(file_path_vec, &target_file_path, 0, false);
 
     let end_time = std::time::Instant::now();
     let cost_time = end_time.duration_since(start_time);
