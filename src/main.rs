@@ -1,18 +1,17 @@
 use std::path::PathBuf;
+use std::collections::HashMap;
 
-/// 用于单个文件和一个汇总文件之间的去重
+/// 用于得出单个文件和汇总文件之间的补集
 /// 输出汇总文件中不包含单个文件条目中的文件
 /// 参数说明：
 /// file_path: 单个文件; total_file_path: 汇总文件； target_file_path: 要生成的文件路径；keyword_index：指定要进行对比的关键字所在的列数，从0开始;
 /// header：csv文件中是否含有标题行
 fn single_file_unrepeat(file_path: &PathBuf, total_file_path: &PathBuf, target_file_path: &PathBuf, keyword_index: usize, header: bool) -> i32 {
-    println!("进入单个文件和汇总的函数中");
     // 生产目标输出文件的写指针、单个文件、汇总文件的指针
     let mut wtr = csv::WriterBuilder::new().has_headers(header).from_path(&target_file_path).unwrap();
     let mut rdr_total_file = csv::ReaderBuilder::new().has_headers(header).from_path(&total_file_path).unwrap();
 
-    // 写入标志及计数器，默认-1则没有任何写入
-    let mut write_flag: bool;
+    // 计数器，默认-1则没有任何写入
     let mut count = 0;
 
     // 如果文件中存在标题行，则处理标题行
@@ -21,37 +20,42 @@ fn single_file_unrepeat(file_path: &PathBuf, total_file_path: &PathBuf, target_f
         wtr.flush().unwrap();
     }
 
-    // 去重核心逻辑
-    // todo: 当前为O(N²)的速度，优化为O(logN)
+    // 补集核心逻辑，总表中指定的列作为hashmap的键，列值作为值，对比文件同理
+    // 如果总表的hashmap中含有对比文件的键，则从总表中移除该键
+    let mut total_file_hashmap = HashMap::new();
     for total_file_record in rdr_total_file.records() {
-        write_flag = true;
         match total_file_record {
             Ok(total_file_record) => {
-                let total_file_keyword: &str = &total_file_record[keyword_index];
-                let mut rdr_file = csv::ReaderBuilder::new().has_headers(header).from_path(file_path).unwrap();
-                for file_record in rdr_file.records() {
-                    match file_record {
-                        Ok(file_record) => {
-                            let file_keyword: &str = &file_record[keyword_index];
-                            if file_keyword == total_file_keyword {
-                                write_flag = false;
-                                break;
-                            }
-                        },
-                        Err(_) => eprintln!("could not read total file records"),
-                    }
-                }
-                if write_flag {
-                    wtr.write_record(&total_file_record).unwrap();
-                    count += 1;
-                }
-                
+                let total_file_keyword: String = total_file_record[keyword_index].to_owned();
+                total_file_hashmap.insert(total_file_keyword, total_file_record);
             },
-            Err(_) =>eprintln!("could not get keyword"),
+            Err(_) => eprintln!("could not read total file records"),
+        }
+    }
+
+    let mut rdr_file = csv::ReaderBuilder::new().has_headers(header).from_path(file_path).unwrap();
+    for file_record in rdr_file.records() {
+        match file_record {
+            Ok(file_record) => {
+                let file_keyword: String = file_record[keyword_index].to_owned();
+                total_file_hashmap.remove(&file_keyword);
+            },
+            Err(_) => eprintln!("could not read file records"),
+        }
+    }
+
+    // 剩下的键写入数据
+    for key in total_file_hashmap.keys() {
+        let file_record = total_file_hashmap.get(key);
+        match file_record {
+            Some(file_record) => {
+                wtr.write_record(file_record);
+                count += 1;
+            },
+            _ => eprintln!("could not read file record"),
         }
     }
     wtr.flush().unwrap();
-    println!("完成单个文件的对比");
     count
 }
 
@@ -168,24 +172,28 @@ fn search_keyword(keyword: Vec<&str>, file_path: &PathBuf, target_file_path: &Pa
 }
 
 fn main() {
-    // 测试文件路径
-    let file_one_path = PathBuf::from("/Users/likongyang/Desktop/test_wenlv/chashuju_1.csv");
-    // let file_two_path = PathBuf::from("/Users/likongyang/Desktop/test_wenlv/chashuju_2.csv");
-    // let total_file_path = PathBuf::from("/Users/likongyang/Desktop/test_wenlv/total_file.csv");
+    // // 测试文件路径
+    let file_one_path = PathBuf::from("/Users/likongyang/Desktop/test_wenlv/chashuju.csv");
+    // // let file_two_path = PathBuf::from("/Users/likongyang/Desktop/test_wenlv/chashuju_2.csv");
+    let total_file_path = PathBuf::from("/Users/likongyang/Desktop/test_wenlv/company_data.csv");
     let target_file_path = PathBuf::from("/Users/likongyang/Desktop/test_wenlv/target_file.csv");
-    // let file_path_vec = vec![file_one_path, file_two_path];
+    // // let file_path_vec = vec![file_one_path, file_two_path];
 
-    // 搜索关键字
-    let keyword = vec!["测试", "test"];
+    // // 搜索关键字
+    // let keyword = vec!["测试", "test"];
 
-    // 测试单个文件去重
-    // let account = single_file_unrepeat(&file_one_path, &total_file_path, &target_file_path, 0, false);
+    // // 测试单个文件去重
+    let start_time = std::time::Instant::now();
+    let count = single_file_unrepeat(&file_one_path, &total_file_path, &target_file_path, 0, true);
+    let end_time = std::time::Instant::now();
+    let cost_time = end_time.duration_since(start_time);
 
-    // 测试多个文件之间的并集
-    // let count = multiple_file_cross_unrepeat(file_path_vec, &target_file_path, 0, false);
+    // // 测试多个文件之间的并集
+    // // let count = multiple_file_cross_unrepeat(file_path_vec, &target_file_path, 0, false);
 
-    // 测试搜索指定的文件
-    let count = search_keyword(keyword, &file_one_path, &target_file_path, false, 20);
+    // // 测试搜索指定的文件
+    // let count = search_keyword(keyword, &file_one_path, &target_file_path, false, 20);
+    println!("耗时{:?}", cost_time);
 
     println!("一共有 {} 条数据生成", count);
 }
