@@ -1,5 +1,7 @@
 use std::path::PathBuf;
 use std::collections::HashMap;
+use std::iter::Iterator;
+use clap::{App, Arg};
 
 /// 用于得出单个文件和汇总文件之间的补集
 /// 输出汇总文件中不包含单个文件条目中的文件
@@ -228,35 +230,62 @@ fn search_keyword(keyword: Vec<&str>, file_path: &PathBuf, target_file_path: &Pa
 }
 
 fn main() {
-    // 测试文件路径
-    let file_one_path = PathBuf::from("/Users/likongyang/Desktop/test_wenlv/chashuju_1.csv");
-    let file_two_path = PathBuf::from("/Users/likongyang/Desktop/test_wenlv/chashuju_2.csv");
-    // let total_file_path = PathBuf::from("/Users/likongyang/Desktop/test_wenlv/company_data.csv");
-    let target_file_path = PathBuf::from("/Users/likongyang/Desktop/test_wenlv/target_file.csv");
-    let file_path_vec = vec![file_one_path, file_two_path];
+    // 构造命令行参数及使用
+    let app = App::new("handle_csv")
+            .version("1.0.0")
+            .author("likongyang <likongyang18@gmail.com>")
+            .about("handle csv file such as files complementary set, union, intersection, merge and search keyword")
+            .arg(Arg::with_name("complementary").short("c").long("complementary").takes_value(true).number_of_values(3)
+                .help("specify three file and target file path, ordering is file, total file, target file path"))
+            .arg(Arg::with_name("union").short("u").long("union").takes_value(true).max_values(200)
+                .help("specify files and target file path, ordering is files, target file path"))
+            .arg(Arg::with_name("intersection").long("intersection").short("i").takes_value(true).max_values(200)
+                .help("specify files and target file path, ordering is files, target file path"))
+            .arg(Arg::with_name("merge").long("merge").short("m").takes_value(true).max_values(200)
+                .help("spcify which column is the basement"))
+            .arg(Arg::with_name("search").long("search").short("s").takes_value(true)
+                .help("spcify keywords"))
+            .get_matches();
 
-    // 函数开始运行时间
-    let start_time = std::time::Instant::now();
+
+    // 获取每个命令对应的参数输入
+    let complementary: Vec<&str> = app.values_of("complementary").unwrap().collect();
+    let union: Vec<&str> = app.values_of("union").unwrap().collect();
+    let intersction: Vec<&str> = app.values_of("multiple").unwrap().collect();
+    let merge: Vec<&str> = app.values_of("merge").unwrap().collect();
+    let search: Vec<&str> = app.values_of("search").unwrap().collect();
+
+    // todo：怎么样同时能够通过命令各自输入对应的参数
+
+    // // 测试文件路径
+    // let file_one_path = PathBuf::from("/Users/likongyang/Desktop/wenlvdianxiao/data/company_data_include_travel.csv");
+    // // let file_two_path = PathBuf::from("/Users/likongyang/Desktop/wenlvdianxiao/data/data_20201126.csv");
+    // let total_file_path = PathBuf::from("/Users/likongyang/Desktop/wenlvdianxiao/data/company_data_final_20201126.csv");
+    // let target_file_path = PathBuf::from("/Users/likongyang/Desktop/wenlvdianxiao/data/company_data_not_include_travel.csv");
+    // // let file_path_vec = vec![file_one_path, file_two_path];
+
+    // // 函数开始运行时间
+    // let start_time = std::time::Instant::now();
 
 
-    // 搜索关键字
-    // let keyword = vec!["测试", "test"];
+    // // 搜索关键字
+    // // let keyword = vec!["旅行社"];
 
-    // 测试补集
+    // // 测试补集
     // let count = file_complementary_set(&file_one_path, &total_file_path, &target_file_path, 0, true);
 
-    // 测试多个文件之间的并集
-    // let count = multiple_file_union(file_path_vec, &target_file_path, 0, false);
+    // // 测试多个文件之间的并集
+    // // let count = multiple_file_union(file_path_vec, &target_file_path, 0, true);
 
-    // 测试搜索指定的文件
-    // let count = search_keyword(keyword, &file_one_path, &target_file_path, false, 20);
+    // // 测试搜索指定的文件
+    // // let count = search_keyword(keyword, &total_file_path, &target_file_path, true, 0);
 
-    // 测试交集
-    let count = multiple_file_intersection(file_path_vec, &target_file_path, 0, false);
+    // // 测试交集
+    // // let count = multiple_file_intersection(file_path_vec, &target_file_path, 0, false);
 
-    let end_time = std::time::Instant::now();
-    let cost_time = end_time.duration_since(start_time);
-    println!("耗时{:?}", cost_time);
+    // let end_time = std::time::Instant::now();
+    // let cost_time = end_time.duration_since(start_time);
+    // println!("耗时{:?}", cost_time);
 
-    println!("一共有 {} 条数据生成", count);
+    // println!("一共有 {} 条数据生成", count);
 }
