@@ -510,26 +510,29 @@ fn combine_phone(file_path: &PathBuf, target_file_path: &PathBuf, source: u16, h
 }
 
 fn main() {
-    // 测试文件路径
-    let file_one_path = PathBuf::from("/Users/likongyang/Desktop/wenlvdianxiao/data/20201203/wenlv_20201203.csv");
-    let file_two_path = PathBuf::from("/Users/likongyang/Desktop/wenlvdianxiao/data/20201203/lixiaoyun_data_20201203.csv");
-    // let total_file_path = PathBuf::from("/Users/likongyang/Desktop/Test/handle_csv/company_data.csv");
-    let target_file_path = PathBuf::from("/Users/likongyang/Desktop/wenlvdianxiao/data/20201203/文旅信息列表-20201203.csv");
-    let file_path_vec = vec![file_one_path, file_two_path];
+    // // 测试文件路径
+    // let file_one_path = PathBuf::from("/Users/likongyang/Desktop/wenlvdianxiao/data/lixiaoyun/combine_lixiaoyun_20201201.csv");
+    // let file_two_path = PathBuf::from("/Users/likongyang/Desktop/wenlvdianxiao/data/lixiaoyun/combine_lixiaoyun_20201202.csv");
+    // let file_three_path = PathBuf::from("/Users/likongyang/Desktop/wenlvdianxiao/data/lixiaoyun/combine_lixiaoyun_20201203.csv");
+    // let file_four_path = PathBuf::from("/Users/likongyang/Desktop/wenlvdianxiao/data/lixiaoyun/combine_lixiaoyun_20201204.csv");
+    // let file_two_path = PathBuf::from("/Users/likongyang/Desktop/wenlvdianxiao/data/lixiaoyun/phone_lixiaoyun_0102.csv");
+    let total_file_path = PathBuf::from("/Users/likongyang/Desktop/wenlvdianxiao/data/lixiaoyun/lixiaoyun_total_20201204.csv");
+    let target_file_path = PathBuf::from("/Users/likongyang/Desktop/wenlvdianxiao/data/lixiaoyun/lixiaoyun_not_include_travel_20201204.csv");
+    // let file_path_vec = vec![file_one_path, file_two_path, file_three_path, file_four_path];
     // let file_path = PathBuf::from("/Users/likongyang/Desktop/wenlvdianxiao/data/20201201/lixiaoyun_20201201.csv");
 
     // 函数开始运行时间
     let start_time = std::time::Instant::now();
 
-    let count = combine_data_from_differen_source(file_path_vec, &target_file_path, true, 1);
-    // combine_phone(&file_one_path, &target_file_path, 1, true);
+    // let count = combine_data_from_differen_source(file_path_vec, &target_file_path, true, 1);
+    // combine_phone(&file_one_path, &target_file_path, 2, true);
     // same_format_combine_data(&file_one_path, &target_file_path, true, 0);
 
     // 补集
     // let count = file_complementary_set(&file_one_path, &total_file_path, &target_file_path, 0, true);
 
     // 多个文件之间的并集
-    // let count = multiple_file_union(file_path_vec, &target_file_path, 1, true);
+    // let count = multiple_file_union(file_path_vec, &target_file_path, 0, true);
 
     // 交集
     // let count = multiple_file_intersection(file_path_vec, &target_file_path, 0, true);
@@ -538,7 +541,8 @@ fn main() {
     // let count = search_keyword(keyword, &total_file_path, &target_file_path, true, 20);
 
     // 剔除指定的关键字数据
-    // let count = delete_keyword_data(keyword, &total_file_path, &target_file_path, true, 20);
+    let keyword = vec!["旅行社"];
+    let count = delete_keyword_data(keyword, &total_file_path, &target_file_path, true, 0);
     let end_time = std::time::Instant::now();
     let cost_time = end_time.duration_since(start_time);
     println!("耗时{:?}", cost_time);
