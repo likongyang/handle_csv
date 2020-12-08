@@ -1,5 +1,6 @@
 use std::path::PathBuf;
 use std::collections::HashMap;
+use std::collections::BTreeMap;
 use std::collections::HashSet;
 use std::iter::Iterator;
 
@@ -8,7 +9,8 @@ use std::iter::Iterator;
 /// 参数说明：
 /// file_path: 单个文件; total_file_path: 汇总文件； target_file_path: 要生成的文件路径；keyword_index：指定要进行对比的关键字所在的列数，从0开始;
 /// header：csv文件中是否含有标题行
-fn file_complementary_set(file_path: &PathBuf, total_file_path: &PathBuf, target_file_path: &PathBuf, keyword_index: usize, header: bool) -> i32 {
+/// 返回值：输出的文件数据量
+fn file_complementary_set(file_path: &PathBuf, total_file_path: &PathBuf, target_file_path: &PathBuf, keyword_index: usize, header: bool) -> u32 {
     // 生产目标输出文件的写指针、单个文件、汇总文件的指针
     let mut wtr = csv::WriterBuilder::new().has_headers(header).from_path(&target_file_path).unwrap();
     let mut rdr_total_file = csv::ReaderBuilder::new().has_headers(header).from_path(&total_file_path).unwrap();
@@ -66,9 +68,11 @@ fn file_complementary_set(file_path: &PathBuf, total_file_path: &PathBuf, target
 /// 参数说明：
 /// file_path:多个文件路径组成的vector, target_file_path：最终生成文件的路径；keyword_index：指定要进行对比的关键字所在的列数，从0开始;
 /// header：csv文件中是否含有标题行
-fn multiple_file_union(file_path: Vec<PathBuf>, target_file_path: &PathBuf, keyword_index: usize, header: bool) -> i32 {
+/// 返回值：输出的文件数据量，新增的数据量
+fn multiple_file_union(file_path: Vec<PathBuf>, target_file_path: &PathBuf, keyword_index: usize, header: bool) -> (u32, u32) {
     // 计数器，默认0则没有任何写入
     let mut count = 0;
+    let mut new = 0;
 
     // 生产目标文件的指针，以及多个文件中第一个文件的读取指针
     let mut wtr = csv::WriterBuilder::new().has_headers(header).from_path(target_file_path).unwrap();
@@ -94,6 +98,9 @@ fn multiple_file_union(file_path: Vec<PathBuf>, target_file_path: &PathBuf, keyw
                         continue;
                     } else {
                         file_hashmap.insert(file_keyword, file_record);
+                        if file_index == 1 {
+                            new += 1;
+                        }
                     }
                 },
                 Err(_) => eprintln!("could not read file records"),
@@ -115,14 +122,16 @@ fn multiple_file_union(file_path: Vec<PathBuf>, target_file_path: &PathBuf, keyw
 
     wtr.flush().unwrap();
 
-    count
+    (count, new)
 }
 
 /// 用于多个文件之间交集
-/// 输出交集文件/
+/// 输出交集文件
+/// 参数说明：
 /// file_path:多个文件路径组成的vector, target_file_path：最终生成文件的路径；keyword_index：指定要进行对比的关键字所在的列数，从0开始;
 /// header：csv文件中是否含有标题行
-fn multiple_file_intersection(file_path: Vec<PathBuf>, target_file_path: &PathBuf, keyword_index: usize, header: bool) -> i32 {
+/// 返回值：输出的文件数据量
+fn multiple_file_intersection(file_path: Vec<PathBuf>, target_file_path: &PathBuf, keyword_index: usize, header: bool) -> u32 {
     // 计数器，默认0则没有任何写入
     let mut count = 0;
 
@@ -191,88 +200,11 @@ fn multiple_file_intersection(file_path: Vec<PathBuf>, target_file_path: &PathBu
     count
 }
 
-/// 指定关键字在指定的文件中进行搜索
-/// 输出搜索结果文件
+/// 用于对指定关键字进行合并，其中号码部分进行合并
+/// 输出合并完毕后的文件（公司名称一项不会有重复结果）
 /// 参数说明：
-/// keyword: 支持单个或多个关键字组成的vector，file_path：指定的源数据文件；target_file_path:最终生成的文件路径
-/// header:csv文件中是否含有标题行；search_index: 要进行搜索时列数，从0开始
-fn search_keyword(keyword: Vec<&str>, file_path: &PathBuf, target_file_path: &PathBuf, header: bool, search_index: usize) -> u16 {
-    // 计数器
-    let mut count = 0;
-
-    // 生产文件读取和写入指针
-    let mut rdr_file = csv::ReaderBuilder::new().has_headers(header).from_path(file_path).unwrap();
-    let mut wtr = csv::WriterBuilder::new().has_headers(header).from_path(target_file_path).unwrap();
-
-    if header {
-        wtr.write_record(rdr_file.headers().unwrap()).unwrap();
-        wtr.flush().unwrap();
-    }
-
-    for record in rdr_file.records() {
-        match record {
-            Ok(record) => {
-                let query: &str = &record[search_index];
-                for i in 0..keyword.len() {
-                    if query.contains(keyword[i]) {
-                        wtr.write_record(&record).unwrap();
-                        count += 1;
-                        wtr.flush().unwrap();
-                        break;
-                    }
-                }
-            },
-            Err(_) => eprintln!("could not read file"),
-        }
-    }
-
-    count
-}
-
-/// 指定关键字从指定的文件中进行剔除
-/// 输出剔除相关数据后剩余数据的文件
-/// 参数说明
-/// keyword: 支持单个或多个关键字组成的vector，file_path：指定的源数据文件；target_file_path:最终生成的文件路径
-/// header:csv文件中是否含有标题行；search_index: 要进行搜索时列数，从0开始
-fn delete_keyword_data(keyword: Vec<&str>, file_path: &PathBuf, target_file_path: &PathBuf, header: bool, search_index: usize) -> u16 {
-    // 计数器
-    let mut count = 0;
-
-    // 生产文件读取和写入指针
-    let mut rdr_file = csv::ReaderBuilder::new().has_headers(header).from_path(file_path).unwrap();
-    let mut wtr = csv::WriterBuilder::new().has_headers(header).from_path(target_file_path).unwrap();
-    
-    if header {
-        wtr.write_record(rdr_file.headers().unwrap()).unwrap();
-        wtr.flush().unwrap();
-    }
-
-    let mut flag = true;
-    for record in rdr_file.records() {
-        match record {
-            Ok(record) => {
-                let query: &str = &record[search_index];
-                for i in 0..keyword.len() {
-                    if query.contains(keyword[i]) {
-                        flag = false;
-                        break;
-                    }
-                }
-                if flag {
-                    wtr.write_record(&record).unwrap();
-                    count += 1;
-                    wtr.flush().unwrap();
-                }
-                flag = true;
-            },
-            Err(_) => eprintln!("could not read file"),
-        }
-    }
-
-    count
-}
-
-/// TODO: 待研究怎么做更好
+/// file_path：要进行合并的数据源文件路径，target_file_path：最终生成文件的路径，header：csv文件是否含有标题行
+/// keyword_index：指定合并数据的依据列，从0开始
 fn same_format_combine_data(file_path: &PathBuf, target_file_path: &PathBuf, header:bool, keyword_index: usize) {
     // 生产目标文件的指针，以及多个文件中第一个文件的读取指针
     let mut wtr = csv::WriterBuilder::new().has_headers(header).from_path(target_file_path).unwrap();
@@ -360,9 +292,12 @@ fn same_format_combine_data(file_path: &PathBuf, target_file_path: &PathBuf, hea
 /// 参数说明:
 /// file_path_vec要合并的文件组路径；target_file_path：生成的目标文件路径；header：csv文件否是含标题行
 /// keyword_index：指定的合并依据关键字
-fn combine_data_from_differen_source(file_path_vec: Vec<PathBuf>, target_file_path: &PathBuf, header:bool, keyword_index: usize) -> u16 {
+/// 返回值：总的输出文件数据量，非独立来源的数据量，独立来源的数据量
+fn combine_data_from_differen_source(file_path_vec: Vec<PathBuf>, target_file_path: &PathBuf, header:bool, keyword_index: usize) -> (u32, u16, u16) {
     // 计数器
     let mut count = 0;
+    let mut new = 0;
+    let mut union = 0;
     // file_path: Vec<PathBuf>,  keyword_index: usize, header: bool
     // 生产目标文件的指针，以及多个文件中第一个文件的读取指针
     let mut wtr = csv::WriterBuilder::new().has_headers(header).from_path(target_file_path).unwrap();
@@ -382,11 +317,10 @@ fn combine_data_from_differen_source(file_path_vec: Vec<PathBuf>, target_file_pa
     // 最后写入hashmap中的键值
     let mut file_hashmap = HashMap::new();
     let mut record_for_write: Vec<String> = vec![];
-    let mut phone_second: String = String::from("");
+    // let mut phone_second: String = String::from("");
     let source: String = String::from("1号来源；2号来源");
 
     for file_index in 0..file_path_vec.len() {
-        println!("{:?}", file_index);
         let mut rdr_file = csv::ReaderBuilder::new().has_headers(header).from_path(&file_path_vec[file_index]).unwrap();
         for file_record in rdr_file.records() {
             match file_record {
@@ -407,11 +341,18 @@ fn combine_data_from_differen_source(file_path_vec: Vec<PathBuf>, target_file_pa
                                 file_hashmap.remove(&file_keyword);
                                 record_for_write.clear();
                                 count += 1;
+                                if file_index == 1 {
+                                    new += 1;
+                                }
                             },
                             _ => eprintln!("could not read file record"),
                         }
                     } else {
                         file_hashmap.insert(file_keyword, file_record);
+                        if file_index == 1 {
+                            new += 1;
+                            union += 1;
+                        }
                     }
                 },
                 Err(_) => eprintln!("could not read file records"),
@@ -433,7 +374,7 @@ fn combine_data_from_differen_source(file_path_vec: Vec<PathBuf>, target_file_pa
 
     wtr.flush().unwrap();
 
-    count
+    (count, new, union)
 }
 
 /// 合并电话
@@ -509,43 +450,250 @@ fn combine_phone(file_path: &PathBuf, target_file_path: &PathBuf, source: u16, h
     }
 }
 
+/// 指定关键字在指定的文件中进行搜索
+/// 输出搜索结果文件
+/// 参数说明：
+/// keyword: 支持单个或多个关键字组成的vector，file_path：指定的源数据文件；target_file_path:最终生成的文件路径
+/// header:csv文件中是否含有标题行；search_index: 要进行搜索时列数，从0开始
+/// 返回值：对应关键字的数据量
+fn search_keyword(keyword: Vec<&str>, file_path: &PathBuf, target_file_path: &PathBuf, header: bool, search_index: usize) -> u32 {
+    // 计数器
+    let mut count = 0;
+
+    // 生产文件读取和写入指针
+    let mut rdr_file = csv::ReaderBuilder::new().has_headers(header).from_path(file_path).unwrap();
+    let mut wtr = csv::WriterBuilder::new().has_headers(header).from_path(target_file_path).unwrap();
+
+    if header {
+        wtr.write_record(rdr_file.headers().unwrap()).unwrap();
+        wtr.flush().unwrap();
+    }
+
+    for record in rdr_file.records() {
+        match record {
+            Ok(record) => {
+                let query: &str = &record[search_index];
+                for i in 0..keyword.len() {
+                    if query.contains(keyword[i]) {
+                        wtr.write_record(&record).unwrap();
+                        count += 1;
+                        wtr.flush().unwrap();
+                        break;
+                    }
+                }
+            },
+            Err(_) => eprintln!("could not read file"),
+        }
+    }
+
+    count
+}
+
+/// 指定关键字从指定的文件中进行剔除
+/// 输出剔除相关数据后剩余数据的文件
+/// 参数说明
+/// keyword: 支持单个或多个关键字组成的vector，file_path：指定的源数据文件；target_file_path:最终生成的文件路径
+/// header:csv文件中是否含有标题行；search_index: 要进行搜索时列数，从0开始
+/// 返回值：对应关键字的数据量
+fn delete_keyword_data(keyword: Vec<&str>, file_path: &PathBuf, target_file_path: &PathBuf, header: bool, search_index: usize) -> u32 {
+    // 计数器
+    let mut count = 0;
+
+    // 生产文件读取和写入指针
+    let mut rdr_file = csv::ReaderBuilder::new().has_headers(header).from_path(file_path).unwrap();
+    let mut wtr = csv::WriterBuilder::new().has_headers(header).from_path(target_file_path).unwrap();
+    
+    if header {
+        wtr.write_record(rdr_file.headers().unwrap()).unwrap();
+        wtr.flush().unwrap();
+    }
+
+    let mut flag = true;
+    for record in rdr_file.records() {
+        match record {
+            Ok(record) => {
+                let query: &str = &record[search_index];
+                for i in 0..keyword.len() {
+                    if query.contains(keyword[i]) {
+                        flag = false;
+                        break;
+                    }
+                }
+                if flag {
+                    wtr.write_record(&record).unwrap();
+                    count += 1;
+                    wtr.flush().unwrap();
+                }
+                flag = true;
+            },
+            Err(_) => eprintln!("could not read file"),
+        }
+    }
+
+    count
+}
+
+/// 去重式搜索输出
+/// 输出对应各自关键字的文件，每次搜索基于总数据（迭代）剔除上一次搜索输出的数据进行搜索
+/// 参数说明:
+/// keyword_map：由不同关键字组成的map,key对应文旅的输出类型; file_path：指定的源数据文件, tfp_map：最终生成的文件路径组成的map，key对应文旅的输出类型
+/// header: csv文件中是否含有标题行; search_index：要进行搜索时的列数，从0开始，
+/// 返回值：对应每一组关键字的数据量
+fn unique_search_keyword(keyword_map: BTreeMap<&str, Vec<&str>>, file_path: &PathBuf, tfp_map: BTreeMap<&str, PathBuf>, header: bool, search_index: usize) -> HashMap<String, u32> {
+    // 计数器，分别对每个关键字进行统计生成的数据量
+    let mut keyword_result_count:HashMap<String, u32> = HashMap::new();
+
+    // 生成源文件读取指针，读取源文件到hashmap中，以方便后续进行搜索和剔除
+    let mut rdr_file = csv::ReaderBuilder::new().has_headers(header).from_path(&file_path).unwrap();
+    let mut file_record_map = HashMap::new();
+    for record in rdr_file.records() {
+        match record {
+            Ok(record) => {
+                let key = record[1].to_owned();
+                file_record_map.insert(key, record.to_owned());
+            },
+            Err(_) => eprintln!("could not read file"),
+        }
+    }
+
+    // 对每组关键字进行搜索并输出文件,以关键字的归类为主索引，分组搜索、生成目标文件
+    for &key in keyword_map.keys() {
+        let mut count = 0;
+        let mut for_remove = vec![];
+        let target_file_path = tfp_map.get(key);        // 目标文件地址
+        match target_file_path {
+            Some(target_file_path) => {
+                let mut wtr = csv::WriterBuilder::new().has_headers(header).from_path(target_file_path).unwrap();
+
+                // 标题行生成
+                if header {
+                    wtr.write_record(rdr_file.headers().unwrap()).unwrap();
+                    wtr.flush().unwrap();
+                }
+
+                // 对每一条数据，进行该组关键字搜索，如果存在则写入到目标文件中，同时存储该条数据到一个临时的容器
+                for (record_key, record_value) in &file_record_map {
+                    let query: &str = &record_value[search_index];
+                    let keyword_vector = keyword_map.get(key);
+                    match keyword_vector {
+                        Some(keyword_vector) => {
+                            for &kv in keyword_vector {
+                                if query.contains(&kv) {
+                                    wtr.write_record(record_value).unwrap();
+                                    wtr.flush().unwrap();
+                                    count += 1;
+                                    for_remove.push(record_key.to_owned());
+                                    break;
+                                }
+                            }
+                        },
+                        _ => eprintln!("somethng wrong with this key {} when read keyword map", key),
+                    }
+                }
+
+                // 从hashmap中删除该组文件中已经输出的数据
+                for record_key in for_remove.iter() {
+                    file_record_map.remove(record_key);
+                }
+                for_remove.clear();
+                
+                keyword_result_count.insert(key.to_owned(), count);     // 统计输出数量
+            },
+            _ => eprintln!("something wrong with this key {}", key),
+        }
+    }
+
+    keyword_result_count
+
+}
 fn main() {
-    // // 测试文件路径
-    // let file_one_path = PathBuf::from("/Users/likongyang/Desktop/wenlvdianxiao/data/lixiaoyun/combine_lixiaoyun_20201201.csv");
-    // let file_two_path = PathBuf::from("/Users/likongyang/Desktop/wenlvdianxiao/data/lixiaoyun/combine_lixiaoyun_20201202.csv");
+    {
+    // 测试文件路径
+    // let file_one_path = PathBuf::from("/Users/likongyang/Desktop/wenlvdianxiao/data/20201207/lixiaoyun_data_20201207.csv");
+    // let file_one_path = PathBuf::from("/Users/likongyang/Desktop/wenlvdianxiao/data/20201207/文旅信息列表-天眼查-20201207.csv");
+    // let file_two_path = PathBuf::from("/Users/likongyang/Desktop/wenlvdianxiao/data/20201207/phone_lixiaoyun_20201207.csv");
     // let file_three_path = PathBuf::from("/Users/likongyang/Desktop/wenlvdianxiao/data/lixiaoyun/combine_lixiaoyun_20201203.csv");
     // let file_four_path = PathBuf::from("/Users/likongyang/Desktop/wenlvdianxiao/data/lixiaoyun/combine_lixiaoyun_20201204.csv");
     // let file_two_path = PathBuf::from("/Users/likongyang/Desktop/wenlvdianxiao/data/lixiaoyun/phone_lixiaoyun_0102.csv");
-    let total_file_path = PathBuf::from("/Users/likongyang/Desktop/wenlvdianxiao/data/lixiaoyun/lixiaoyun_total_20201204.csv");
-    let target_file_path = PathBuf::from("/Users/likongyang/Desktop/wenlvdianxiao/data/lixiaoyun/lixiaoyun_not_include_travel_20201204.csv");
+    // let total_file_path = PathBuf::from("/Users/likongyang/Desktop/wenlvdianxiao/data/lixiaoyun/文旅外呼列表_励销云_20201204.csv");
+    // let target_file_path = PathBuf::from("/Users/likongyang/Desktop/wenlvdianxiao/data/lixiaoyun/文旅外呼列表_硬件集成商_20201204.csv");
+    // let target_file_path = PathBuf::from("/Users/likongyang/Desktop/wenlvdianxiao/data/20201207/文旅信息列表-20201207.csv");
     // let file_path_vec = vec![file_one_path, file_two_path, file_three_path, file_four_path];
+    // let file_path_vec = vec![file_one_path, file_two_path];
     // let file_path = PathBuf::from("/Users/likongyang/Desktop/wenlvdianxiao/data/20201201/lixiaoyun_20201201.csv");
-
+    }
     // 函数开始运行时间
     let start_time = std::time::Instant::now();
 
-    // let count = combine_data_from_differen_source(file_path_vec, &target_file_path, true, 1);
+    // let (count, new, union) = combine_data_from_differen_source(file_path_vec, &target_file_path, true, 1);
     // combine_phone(&file_one_path, &target_file_path, 2, true);
-    // same_format_combine_data(&file_one_path, &target_file_path, true, 0);
+    // same_format_combine_data(&file_one_path, &target_file_path, true, 1);
 
     // 补集
     // let count = file_complementary_set(&file_one_path, &total_file_path, &target_file_path, 0, true);
 
     // 多个文件之间的并集
-    // let count = multiple_file_union(file_path_vec, &target_file_path, 0, true);
+    // let (count, new) = multiple_file_union(file_path_vec, &target_file_path, 1, true);
 
     // 交集
-    // let count = multiple_file_intersection(file_path_vec, &target_file_path, 0, true);
+    // let count = multiple_file_intersection(file_path_vec, &target_file_path, 1, true);
 
     // 搜索指定的关键字数据
-    // let count = search_keyword(keyword, &total_file_path, &target_file_path, true, 20);
+    let guihua_keyword = vec!["旅游设计规划", "景区设计规划", "旅游景区规划", "展览展示策划", "景观设计", "文旅规划咨询", "景区策划", 
+                                "园林景观设计", "旅游文化活动组织策划"];
+    let hongse_keyword = vec!["红色文旅", "红色教育"];
+    let guanli_keyword = vec!["景区游览", "游览景区管理", "景区管理", "旅游节庆活动", "景区运营"];
+    let ruanjian_keyword = vec!["技术开发", "技术服务", "软件开发", "计算机技术服务"];
+    let yingjian_keyword = vec!["建筑工程", "基础设施建设"];
+    let kaifa_keyword = vec!["旅游景点开发", "旅游景区开发", "旅游景点投资", "景区景点开发", "旅游景区管理", "景区建设及经营", "旅游资源开发建设", 
+                                "观光旅游", "旅游资源开发", "旅游项目开发", "旅游景点开发与经营"];
+    // let count = search_keyword(keyword, &total_file_path, &target_file_path, true, 12);
 
     // 剔除指定的关键字数据
-    let keyword = vec!["旅行社"];
-    let count = delete_keyword_data(keyword, &total_file_path, &target_file_path, true, 0);
+    // let keyword = vec!["旅行社", "船舶", "法律", "汽车客运", "旅客运输", "贸易有限公司", "商贸有限公司", "生物科技", "国际旅游", "农业发展", "餐饮管理",
+    //                             "金属材料", "汽车运输", "旅游集散中心", "职业技术学院", "汽车服务", "客运有限公司", "杂志社", "航空客户运输", "户外协会"];
+    // let keyword = vec!["汽车租赁", "旅游车队","服饰","农场","摄影家协会","农林投资","研究会","房车","游艇","影视制作","游客服务中心","五金",
+    //                             "商务服务", "中心", "纪念品", "公益", "航空", "学院", "生态", "农业"];
+    // let keyword = vec!["蔬菜", "汽车租赁", "鞋帽"];
+    // let count = delete_keyword_data(keyword, &total_file_path, &target_file_path, true, 12);
+    
+    let mut keyword_map = BTreeMap::new();
+    let mut tfp_map = BTreeMap::new();
+    keyword_map.insert("1guihua", guihua_keyword);
+    keyword_map.insert("2hongse", hongse_keyword);
+    keyword_map.insert("3guanli", guanli_keyword);
+    keyword_map.insert("4ruanjian",ruanjian_keyword);
+    keyword_map.insert("5yingjian", yingjian_keyword);
+    keyword_map.insert("6kaifa", kaifa_keyword);
+
+    let file_path = PathBuf::from("/Users/likongyang/Desktop/wenlvdianxiao/data/test_program/lixiaoyun.csv");
+    let guihua_file_path = PathBuf::from("/Users/likongyang/Desktop/wenlvdianxiao/data/test_program/guihua.csv");
+    let hongse_file_path = PathBuf::from("/Users/likongyang/Desktop/wenlvdianxiao/data/test_program/hongse.csv");
+    let guanli_file_path = PathBuf::from("/Users/likongyang/Desktop/wenlvdianxiao/data/test_program/guanli.csv");
+    let ruanjian_file_path = PathBuf::from("/Users/likongyang/Desktop/wenlvdianxiao/data/test_program/ruanjian.csv");
+    let yingjian_file_path = PathBuf::from("/Users/likongyang/Desktop/wenlvdianxiao/data/test_program/yingjian.csv");
+    let kaifa_file_path = PathBuf::from("/Users/likongyang/Desktop/wenlvdianxiao/data/test_program/kaifa.csv");
+    tfp_map.insert("1guihua", guihua_file_path);
+    tfp_map.insert("2hongse", hongse_file_path);
+    tfp_map.insert("3guanli", guanli_file_path);
+    tfp_map.insert("4ruanjian", ruanjian_file_path);
+    tfp_map.insert("5yingjian", yingjian_file_path);
+    tfp_map.insert("6kaifa", kaifa_file_path);
+
+    let result = unique_search_keyword(keyword_map, &file_path, tfp_map, true, 21);
+    let mut total = 0;
+    for (_, v) in &result {
+        total += v;
+    }
+
+
     let end_time = std::time::Instant::now();
     let cost_time = end_time.duration_since(start_time);
     println!("耗时{:?}", cost_time);
+    println!("{:#?}", result);
+    println!("共生成 {} 条数据", total);
 
-    println!("一共有 {} 条数据生成", count);
+
+    // println!("一共有 {} 条数据生成， 新增 {} 条数据, 独立来源 {}", count, new, union);
+    // println!("一共有 {} 条数据生成， 新增 {} 条数据", count, new);
 }
