@@ -3,6 +3,7 @@ use std::collections::HashMap;
 use std::collections::BTreeMap;
 use std::collections::HashSet;
 use std::iter::Iterator;
+use regex::Regex;
 
 /// 用于得出单个文件和汇总文件之间的补集
 /// 输出汇总文件中不包含单个文件条目中的文件
@@ -217,7 +218,7 @@ fn same_format_combine_data(file_path: &PathBuf, target_file_path: &PathBuf, hea
     }
 
     // 逻辑:
-    // 轮询第一个字段，如果字段名字相同，则合并为一个公司，同时比较第三列手机号码和第四列固定电话
+    // 轮询第一个字段，如果字段名字相同，则合并为一个公司，同时比较第四列手机号码和第五列固定电话
     // 比较号码前先判断是否为空，如果为空则跳过，如果不为空，暂时保留组装到vector中
     // 如果判断第一个字段不相等，则暂存，然后组装上一轮获得的结果，并写入
     // TODO: 判断文件到了最后的写出，目前还不能
@@ -237,28 +238,28 @@ fn same_format_combine_data(file_path: &PathBuf, target_file_path: &PathBuf, hea
                         temp_string = compare_data.to_string();
                     }
 
-                    if record[2] != none_value {
-                        mobile_phone.push_str(&record[2]);
+                    if record[3] != none_value {
+                        mobile_phone.push_str(&record[3]);
                         mobile_phone.push_str(";");
                     }
-                    if record[3] != none_value {
-                        tel_phone.push_str(&record[3]);
+                    if record[4] != none_value {
+                        tel_phone.push_str(&record[4]);
                         tel_phone.push_str(";");
                     }
                     first_flag = false;
                 } else {
                     if compare_data == temp_string {
-                        if record[2] != none_value {
-                            mobile_phone.push_str(&record[2]);
+                        if record[3] != none_value {
+                            mobile_phone.push_str(&record[3]);
                             mobile_phone.push_str(";");
                         }
-                        if record[3] != none_value {
-                            tel_phone.push_str(&record[3]);
+                        if record[4] != none_value {
+                            tel_phone.push_str(&record[4]);
                             tel_phone.push_str(";");
                         }
                     } else {
-                        record_for_write[2] = mobile_phone.to_string();
-                        record_for_write[3] = tel_phone.to_string();
+                        record_for_write[3] = mobile_phone.to_string();
+                        record_for_write[4] = tel_phone.to_string();
                         wtr.write_record(&record_for_write).unwrap();
                         wtr.flush().unwrap();
                         record_for_write.clear();
@@ -270,12 +271,12 @@ fn same_format_combine_data(file_path: &PathBuf, target_file_path: &PathBuf, hea
                             temp_string = compare_data.to_string();
                         }
 
-                        if record[2] != none_value {
-                            mobile_phone.push_str(&record[2]);
+                        if record[3] != none_value {
+                            mobile_phone.push_str(&record[3]);
                             mobile_phone.push_str(";");
                         }
-                        if record[3] != none_value {
-                            tel_phone.push_str(&record[3]);
+                        if record[4] != none_value {
+                            tel_phone.push_str(&record[4]);
                             tel_phone.push_str(";");
                         }
                     }
@@ -419,7 +420,6 @@ fn combine_phone(file_path: &PathBuf, target_file_path: &PathBuf, source: u16, h
                 }
 
                 let phone_one_string = &file_record[column];
-                // if phone_one_string != "" {
                 let phone_two_string = &file_record[un_column];
                 let phone_one_vector:Vec<&str> = phone_one_string.split(";").collect();
                 let phone_two_vector:Vec<&str> = phone_two_string.split(";").collect();
@@ -436,7 +436,8 @@ fn combine_phone(file_path: &PathBuf, target_file_path: &PathBuf, source: u16, h
                 // }
 
                 record_for_write[0] = data_from.to_string();
-                record_for_write[column] = phone_second.to_string();
+                let phone = mobile_first(phone_second.to_owned());
+                record_for_write[column] = phone;
                 record_for_write[un_column] = String::from("");
 
                 wtr.write_record(&record_for_write).unwrap();
@@ -606,27 +607,55 @@ fn unique_search_keyword(keyword_map: BTreeMap<&str, Vec<&str>>, file_path: &Pat
     keyword_result_count
 
 }
+
+/// 手机号码优先
+/// 返回经过重排后的数据，其中手机号码在前，固定电话在后
+/// 参数说明：
+/// phone：联系方式的字符串
+/// 返回值：手机在前的联系方式字符串
+fn mobile_first(phone: String) -> String {
+    let change_to_str = phone.as_str();
+    let re = Regex::new(r"1\d{10};").unwrap();
+
+    let mut mobile_vec = Vec::new();
+
+    for result in re.captures_iter(change_to_str) {
+        mobile_vec.push(result[0].to_owned())
+    }
+
+    let telephone = re.replace_all(change_to_str, "");
+    let mut result = String::from("");
+
+    for mv in mobile_vec {
+        result.push_str(&mv);
+    }
+
+    result.push_str(&telephone);
+
+    result
+}
+
 fn main() {
-    {
     // 测试文件路径
-    // let file_one_path = PathBuf::from("/Users/likongyang/Desktop/wenlvdianxiao/data/20201207/lixiaoyun_data_20201207.csv");
-    // let file_one_path = PathBuf::from("/Users/likongyang/Desktop/wenlvdianxiao/data/20201207/文旅信息列表-天眼查-20201207.csv");
-    // let file_two_path = PathBuf::from("/Users/likongyang/Desktop/wenlvdianxiao/data/20201207/phone_lixiaoyun_20201207.csv");
+    // let file_one_path = PathBuf::from("/Users/likongyang/Desktop/wenlvdianxiao/data/20201208/励销云-20201208.csv");
+    let file_one_path = PathBuf::from("/Users/likongyang/Desktop/wenlvdianxiao/data/20201208/文旅信息列表-天眼查-20201208.csv");
+    let file_two_path = PathBuf::from("/Users/likongyang/Desktop/wenlvdianxiao/data/20201208/phone-励销云-20201208.csv");
     // let file_three_path = PathBuf::from("/Users/likongyang/Desktop/wenlvdianxiao/data/lixiaoyun/combine_lixiaoyun_20201203.csv");
     // let file_four_path = PathBuf::from("/Users/likongyang/Desktop/wenlvdianxiao/data/lixiaoyun/combine_lixiaoyun_20201204.csv");
     // let file_two_path = PathBuf::from("/Users/likongyang/Desktop/wenlvdianxiao/data/lixiaoyun/phone_lixiaoyun_0102.csv");
     // let total_file_path = PathBuf::from("/Users/likongyang/Desktop/wenlvdianxiao/data/lixiaoyun/文旅外呼列表_励销云_20201204.csv");
     // let target_file_path = PathBuf::from("/Users/likongyang/Desktop/wenlvdianxiao/data/lixiaoyun/文旅外呼列表_硬件集成商_20201204.csv");
-    // let target_file_path = PathBuf::from("/Users/likongyang/Desktop/wenlvdianxiao/data/20201207/文旅信息列表-20201207.csv");
+    let target_file_path = PathBuf::from("/Users/likongyang/Desktop/wenlvdianxiao/data/20201208/文旅信息列表-20201208a.csv");
     // let file_path_vec = vec![file_one_path, file_two_path, file_three_path, file_four_path];
-    // let file_path_vec = vec![file_one_path, file_two_path];
+    let file_path_vec = vec![file_one_path, file_two_path];
     // let file_path = PathBuf::from("/Users/likongyang/Desktop/wenlvdianxiao/data/20201201/lixiaoyun_20201201.csv");
-    }
     // 函数开始运行时间
     let start_time = std::time::Instant::now();
 
-    // let (count, new, union) = combine_data_from_differen_source(file_path_vec, &target_file_path, true, 1);
+    
+    // 合并电话一项
     // combine_phone(&file_one_path, &target_file_path, 2, true);
+    // 相同公司多条线索合并
     // same_format_combine_data(&file_one_path, &target_file_path, true, 1);
 
     // 补集
@@ -635,18 +664,21 @@ fn main() {
     // 多个文件之间的并集
     // let (count, new) = multiple_file_union(file_path_vec, &target_file_path, 1, true);
 
+    // 不同来源文件并集
+    let (count, new, union) = combine_data_from_differen_source(file_path_vec, &target_file_path, true, 1);
+
     // 交集
     // let count = multiple_file_intersection(file_path_vec, &target_file_path, 1, true);
 
     // 搜索指定的关键字数据
-    let guihua_keyword = vec!["旅游设计规划", "景区设计规划", "旅游景区规划", "展览展示策划", "景观设计", "文旅规划咨询", "景区策划", 
-                                "园林景观设计", "旅游文化活动组织策划"];
-    let hongse_keyword = vec!["红色文旅", "红色教育"];
-    let guanli_keyword = vec!["景区游览", "游览景区管理", "景区管理", "旅游节庆活动", "景区运营"];
-    let ruanjian_keyword = vec!["技术开发", "技术服务", "软件开发", "计算机技术服务"];
-    let yingjian_keyword = vec!["建筑工程", "基础设施建设"];
-    let kaifa_keyword = vec!["旅游景点开发", "旅游景区开发", "旅游景点投资", "景区景点开发", "旅游景区管理", "景区建设及经营", "旅游资源开发建设", 
-                                "观光旅游", "旅游资源开发", "旅游项目开发", "旅游景点开发与经营"];
+    // let guihua_keyword = vec!["旅游设计规划", "景区设计规划", "旅游景区规划", "展览展示策划", "景观设计", "文旅规划咨询", "景区策划", 
+    //                             "园林景观设计", "旅游文化活动组织策划"];
+    // let hongse_keyword = vec!["红色文旅", "红色教育"];
+    // let guanli_keyword = vec!["景区游览", "游览景区管理", "景区管理", "旅游节庆活动", "景区运营"];
+    // let ruanjian_keyword = vec!["技术开发", "技术服务", "软件开发", "计算机技术服务"];
+    // let yingjian_keyword = vec!["建筑工程", "基础设施建设"];
+    // let kaifa_keyword = vec!["旅游景点开发", "旅游景区开发", "旅游景点投资", "景区景点开发", "旅游景区管理", "景区建设及经营", "旅游资源开发建设", 
+                                // "观光旅游", "旅游资源开发", "旅游项目开发", "旅游景点开发与经营"];
     // let count = search_keyword(keyword, &total_file_path, &target_file_path, true, 12);
 
     // 剔除指定的关键字数据
@@ -657,43 +689,44 @@ fn main() {
     // let keyword = vec!["蔬菜", "汽车租赁", "鞋帽"];
     // let count = delete_keyword_data(keyword, &total_file_path, &target_file_path, true, 12);
     
-    let mut keyword_map = BTreeMap::new();
-    let mut tfp_map = BTreeMap::new();
-    keyword_map.insert("1guihua", guihua_keyword);
-    keyword_map.insert("2hongse", hongse_keyword);
-    keyword_map.insert("3guanli", guanli_keyword);
-    keyword_map.insert("4ruanjian",ruanjian_keyword);
-    keyword_map.insert("5yingjian", yingjian_keyword);
-    keyword_map.insert("6kaifa", kaifa_keyword);
+    // 去重是搜索生成文件
+    // let mut keyword_map = BTreeMap::new();
+    // let mut tfp_map = BTreeMap::new();
+    // keyword_map.insert("1guihua", guihua_keyword);
+    // keyword_map.insert("2hongse", hongse_keyword);
+    // keyword_map.insert("3guanli", guanli_keyword);
+    // keyword_map.insert("4ruanjian",ruanjian_keyword);
+    // keyword_map.insert("5yingjian", yingjian_keyword);
+    // keyword_map.insert("6kaifa", kaifa_keyword);
 
-    let file_path = PathBuf::from("/Users/likongyang/Desktop/wenlvdianxiao/data/test_program/lixiaoyun.csv");
-    let guihua_file_path = PathBuf::from("/Users/likongyang/Desktop/wenlvdianxiao/data/test_program/guihua.csv");
-    let hongse_file_path = PathBuf::from("/Users/likongyang/Desktop/wenlvdianxiao/data/test_program/hongse.csv");
-    let guanli_file_path = PathBuf::from("/Users/likongyang/Desktop/wenlvdianxiao/data/test_program/guanli.csv");
-    let ruanjian_file_path = PathBuf::from("/Users/likongyang/Desktop/wenlvdianxiao/data/test_program/ruanjian.csv");
-    let yingjian_file_path = PathBuf::from("/Users/likongyang/Desktop/wenlvdianxiao/data/test_program/yingjian.csv");
-    let kaifa_file_path = PathBuf::from("/Users/likongyang/Desktop/wenlvdianxiao/data/test_program/kaifa.csv");
-    tfp_map.insert("1guihua", guihua_file_path);
-    tfp_map.insert("2hongse", hongse_file_path);
-    tfp_map.insert("3guanli", guanli_file_path);
-    tfp_map.insert("4ruanjian", ruanjian_file_path);
-    tfp_map.insert("5yingjian", yingjian_file_path);
-    tfp_map.insert("6kaifa", kaifa_file_path);
+    // let file_path = PathBuf::from("/Users/likongyang/Desktop/wenlvdianxiao/data/test_program/lixiaoyun.csv");
+    // let guihua_file_path = PathBuf::from("/Users/likongyang/Desktop/wenlvdianxiao/data/test_program/guihua.csv");
+    // let hongse_file_path = PathBuf::from("/Users/likongyang/Desktop/wenlvdianxiao/data/test_program/hongse.csv");
+    // let guanli_file_path = PathBuf::from("/Users/likongyang/Desktop/wenlvdianxiao/data/test_program/guanli.csv");
+    // let ruanjian_file_path = PathBuf::from("/Users/likongyang/Desktop/wenlvdianxiao/data/test_program/ruanjian.csv");
+    // let yingjian_file_path = PathBuf::from("/Users/likongyang/Desktop/wenlvdianxiao/data/test_program/yingjian.csv");
+    // let kaifa_file_path = PathBuf::from("/Users/likongyang/Desktop/wenlvdianxiao/data/test_program/kaifa.csv");
+    // tfp_map.insert("1guihua", guihua_file_path);
+    // tfp_map.insert("2hongse", hongse_file_path);
+    // tfp_map.insert("3guanli", guanli_file_path);
+    // tfp_map.insert("4ruanjian", ruanjian_file_path);
+    // tfp_map.insert("5yingjian", yingjian_file_path);
+    // tfp_map.insert("6kaifa", kaifa_file_path);
 
-    let result = unique_search_keyword(keyword_map, &file_path, tfp_map, true, 21);
-    let mut total = 0;
-    for (_, v) in &result {
-        total += v;
-    }
+    // let result = unique_search_keyword(keyword_map, &file_path, tfp_map, true, 21);
+    // let mut total = 0;
+    // for (_, v) in &result {
+    //     total += v;
+    // }
 
 
     let end_time = std::time::Instant::now();
     let cost_time = end_time.duration_since(start_time);
     println!("耗时{:?}", cost_time);
-    println!("{:#?}", result);
-    println!("共生成 {} 条数据", total);
+    // println!("{:#?}", result);
+    // println!("共生成 {} 条数据", total);
 
 
-    // println!("一共有 {} 条数据生成， 新增 {} 条数据, 独立来源 {}", count, new, union);
+    println!("一共有 {} 条数据生成， 新增 {} 条数据, 独立来源 {}", count, new, union);
     // println!("一共有 {} 条数据生成， 新增 {} 条数据", count, new);
 }
