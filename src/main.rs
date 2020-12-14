@@ -1,9 +1,50 @@
 use std::path::PathBuf;
-use std::collections::HashMap;
-use std::collections::BTreeMap;
-use std::collections::HashSet;
+use std::collections::{HashMap, BTreeMap, HashSet};
 use std::iter::Iterator;
+// use std::fs::File;
+// use std::io::{BufRead, BufReader};
+// use std::io::prelude::*;
 use regex::Regex;
+// use serde::{Serialize, Deserialize};
+
+// #[derive(Serialize, Deserialize, Debug)]
+// struct Method {
+//     combine_company: String,
+// }
+
+// #[derive(Serialize, Deserialize, Debug)]
+// struct Lixiaoyun {
+//     kixiaoyun_source_file: String,
+//     kixiaoyun_data_file: String,
+//     kixiaoyun_phone_file: String,
+// }
+
+// #[derive(Serialize, Deserialize, Debug)]
+// struct Tianyancha {
+//     tianyancha_source_file: String,
+//     tianyancha_phone_file: String,
+// }
+
+// #[derive(Serialize, Deserialize, Debug)]
+// struct Total {
+//     last_time_file: String,
+//     combine_tianyancha_file: String,
+//     wenlv_file: String,
+// }
+
+// #[derive(Serialize, Deserialize, Debug)]
+// struct Time {
+//     time: String,
+// }
+
+// #[derive(Serialize, Deserialize, Debug)]
+// struct Conf {
+//     method: Option<Method>,
+//     lixiaoyun_sourcefile: Option<Lixiaoyun>,
+//     tianyancha_sourcefile: Option<Tianyancha>,
+//     total_file: Option<Total>,
+//     time: Option<Time>,
+// }
 
 /// 用于得出单个文件和汇总文件之间的补集
 /// 输出汇总文件中不包含单个文件条目中的文件
@@ -475,10 +516,58 @@ fn search_keyword(keyword: Vec<&str>, file_path: &PathBuf, target_file_path: &Pa
             Ok(record) => {
                 let query: &str = &record[search_index];
                 for i in 0..keyword.len() {
-                    if query.contains(keyword[i]) {
+                    if query.contains(&keyword[i]) {
                         wtr.write_record(&record).unwrap();
                         count += 1;
                         wtr.flush().unwrap();
+                        break;
+                    }
+                }
+            },
+            Err(_) => eprintln!("could not read file"),
+        }
+    }
+
+    count
+}
+
+/// 指定关键字在指定的文件多列中进行搜索
+/// 输出搜索结果文件
+/// 参数说明：
+/// keyword: 支持单个或多个关键字组成的vector，file_path：指定的源数据文件；target_file_path:最终生成的文件路径
+/// header:csv文件中是否含有标题行；search_index: 要进行搜索时列数vector，列数从0开始
+/// 返回值：对应关键字的数据量
+fn multiple_search_keyword(keyword: Vec<&str>, file_path: &PathBuf, target_file_path: &PathBuf, header: bool, search_index: Vec<usize>) -> u32 {
+    // 计数器
+    let mut count = 0;
+
+    // 生产文件读取和写入指针
+    let mut rdr_file = csv::ReaderBuilder::new().has_headers(header).from_path(file_path).unwrap();
+    let mut wtr = csv::WriterBuilder::new().has_headers(header).from_path(target_file_path).unwrap();
+
+    if header {
+        wtr.write_record(rdr_file.headers().unwrap()).unwrap();
+        wtr.flush().unwrap();
+    }
+
+    for record in rdr_file.records() {
+        match record {
+            Ok(record) => {
+                for si in search_index.iter() {
+                    let mut search_result = false;
+                    // println!("i为{}, search_result为{}", si, search_result);
+                    let query: &str = &record[*si];
+                    // println!("query为{}", query);
+                    for j in 0..keyword.len() {
+                        if query.contains(&keyword[j]) {
+                            wtr.write_record(&record).unwrap();
+                            count += 1;
+                            wtr.flush().unwrap();
+                            search_result = true;
+                            break;
+                        }
+                    }
+                    if search_result {
                         break;
                     }
                 }
@@ -637,49 +726,95 @@ fn mobile_first(phone: String) -> String {
 
 fn main() {
     // 测试文件路径
-    // let file_one_path = PathBuf::from("/Users/likongyang/Desktop/wenlvdianxiao/data/20201208/励销云-20201208.csv");
-    let file_one_path = PathBuf::from("/Users/likongyang/Desktop/wenlvdianxiao/data/20201208/文旅信息列表-天眼查-20201208.csv");
-    let file_two_path = PathBuf::from("/Users/likongyang/Desktop/wenlvdianxiao/data/20201208/phone-励销云-20201208.csv");
-    // let file_three_path = PathBuf::from("/Users/likongyang/Desktop/wenlvdianxiao/data/lixiaoyun/combine_lixiaoyun_20201203.csv");
+    // let file_one_path = PathBuf::from("/Users/likongyang/Desktop/wenlvdianxiao/data/20201213/文旅公司信息列表-规划类-公司-20201213.csv");
+    // let file_one_path = PathBuf::from("/Users/likongyang/Desktop/wenlvdianxiao/data/20201208/文旅信息列表-天眼查-20201208.csv");
+    // let file_two_path = PathBuf::from("/Users/likongyang/Desktop/wenlvdianxiao/data/20201213/文旅公司信息列表-规划类-公司2-20201213.csv");
+    // let file_three_path = PathBuf::from("/Users/likongyang/Desktop/wenlvdianxiao/data/20201213/文旅公司信息列表-规划类-经营-20201213.csv");
     // let file_four_path = PathBuf::from("/Users/likongyang/Desktop/wenlvdianxiao/data/lixiaoyun/combine_lixiaoyun_20201204.csv");
     // let file_two_path = PathBuf::from("/Users/likongyang/Desktop/wenlvdianxiao/data/lixiaoyun/phone_lixiaoyun_0102.csv");
-    // let total_file_path = PathBuf::from("/Users/likongyang/Desktop/wenlvdianxiao/data/lixiaoyun/文旅外呼列表_励销云_20201204.csv");
+    let total_file_path = PathBuf::from("/Users/likongyang/Desktop/wenlvdianxiao/data/test_program/文旅公司信息列表-未打-20201213.csv");
     // let target_file_path = PathBuf::from("/Users/likongyang/Desktop/wenlvdianxiao/data/lixiaoyun/文旅外呼列表_硬件集成商_20201204.csv");
-    let target_file_path = PathBuf::from("/Users/likongyang/Desktop/wenlvdianxiao/data/20201208/文旅信息列表-20201208a.csv");
-    // let file_path_vec = vec![file_one_path, file_two_path, file_three_path, file_four_path];
-    let file_path_vec = vec![file_one_path, file_two_path];
+    let target_file_path = PathBuf::from("/Users/likongyang/Desktop/wenlvdianxiao/data/test_program/test-20201214.csv");
+    // let file_path_vec = vec![file_one_path, file_two_path, file_three_path];
+    // let file_path_vec = vec![file_one_path, file_three_path];
     // let file_path = PathBuf::from("/Users/likongyang/Desktop/wenlvdianxiao/data/20201201/lixiaoyun_20201201.csv");
     // 函数开始运行时间
     let start_time = std::time::Instant::now();
 
-    
+    // let mut rdr_file = csv::ReaderBuilder::new().has_headers(true).from_path(&file_one_path).unwrap();
+    // let mut keyword = Vec::new();
+    // let mut style = String::from("");
+
+    // for file_record in rdr_file.records() {
+    //     match file_record {
+    //         Ok(file_record) => {
+    //             let temp_str = file_record[1].trim().replace("有限公司","");
+    //             if temp_str != "" {
+    //                 // keyword.push(temp_str);
+    //                 style.push_str(temp_str.as_str());
+    //             }
+    //         },
+    //         Err(_) => eprintln!("can not read data"),
+    //     }
+    // }
+
+    // println!("{:?}", style);
+
+
+    // let file_path = "Source.toml";
+    // let mut file = match File::open(file_path) {
+    //     Ok(f) => f,
+    //     Err(e) => panic!("no such file {} exception: {}", file_path, e)
+    // };
+
+    // let mut str_val = String::new();
+    // match file.read_to_string(&mut str_val) {
+    //     Ok(s) => s,
+    //     Err(e) => panic!("Error reading file: {}", e)
+    // };
+
+    // let config: Conf = toml::from_str(&str_val).unwrap();
+
     // 合并电话一项
     // combine_phone(&file_one_path, &target_file_path, 2, true);
     // 相同公司多条线索合并
     // same_format_combine_data(&file_one_path, &target_file_path, true, 1);
 
     // 补集
-    // let count = file_complementary_set(&file_one_path, &total_file_path, &target_file_path, 0, true);
+    // let count = file_complementary_set(&file_one_path, &total_file_path, &target_file_path, 1, true);
 
     // 多个文件之间的并集
     // let (count, new) = multiple_file_union(file_path_vec, &target_file_path, 1, true);
 
     // 不同来源文件并集
-    let (count, new, union) = combine_data_from_differen_source(file_path_vec, &target_file_path, true, 1);
+    // let (count, new, union) = combine_data_from_differen_source(file_path_vec, &target_file_path, true, 1);
 
     // 交集
     // let count = multiple_file_intersection(file_path_vec, &target_file_path, 1, true);
 
     // 搜索指定的关键字数据
     // let guihua_keyword = vec!["旅游设计规划", "景区设计规划", "旅游景区规划", "展览展示策划", "景观设计", "文旅规划咨询", "景区策划", 
-    //                             "园林景观设计", "旅游文化活动组织策划"];
+                                // "园林景观设计", "旅游文化活动组织策划"];
     // let hongse_keyword = vec!["红色文旅", "红色教育"];
     // let guanli_keyword = vec!["景区游览", "游览景区管理", "景区管理", "旅游节庆活动", "景区运营"];
     // let ruanjian_keyword = vec!["技术开发", "技术服务", "软件开发", "计算机技术服务"];
     // let yingjian_keyword = vec!["建筑工程", "基础设施建设"];
     // let kaifa_keyword = vec!["旅游景点开发", "旅游景区开发", "旅游景点投资", "景区景点开发", "旅游景区管理", "景区建设及经营", "旅游资源开发建设", 
                                 // "观光旅游", "旅游资源开发", "旅游项目开发", "旅游景点开发与经营"];
-    // let count = search_keyword(keyword, &total_file_path, &target_file_path, true, 12);
+
+
+    let keyword = vec!["旅游设计规划", "景区设计规划", "旅游景区规划", "展览展示策划", "景观设计", "文旅规划咨询", "景区策划", 
+                                "园林景观设计", "旅游文化活动组织策划"];
+    // let keyword = vec!["旅游文化", "文化旅游"];
+    // let keyword = vec!["红色文旅", "红色教育"];
+    // let guanli_keyword = vec!["景区游览", "游览景区管理", "景区管理", "旅游节庆活动", "景区运营"];
+    // let ruanjian_keyword = vec!["技术开发", "技术服务", "软件开发", "计算机技术服务"];
+    // let yingjian_keyword = vec!["建筑工程", "基础设施建设"];
+    // let kaifa_keyword = vec!["旅游景点开发", "旅游景区开发", "旅游景点投资", "景区景点开发", "旅游景区管理", "景区建设及经营", "旅游资源开发建设", 
+                                // "观光旅游", "旅游资源开发", "旅游项目开发", "旅游景点开发与经营"];
+    // let count = search_keyword(keyword, &total_file_path, &target_file_path, true, 1);
+    let search_index = vec![1, 21];
+    let count = multiple_search_keyword(keyword, &total_file_path, &target_file_path, true, search_index);
 
     // 剔除指定的关键字数据
     // let keyword = vec!["旅行社", "船舶", "法律", "汽车客运", "旅客运输", "贸易有限公司", "商贸有限公司", "生物科技", "国际旅游", "农业发展", "餐饮管理",
@@ -687,9 +822,14 @@ fn main() {
     // let keyword = vec!["汽车租赁", "旅游车队","服饰","农场","摄影家协会","农林投资","研究会","房车","游艇","影视制作","游客服务中心","五金",
     //                             "商务服务", "中心", "纪念品", "公益", "航空", "学院", "生态", "农业"];
     // let keyword = vec!["蔬菜", "汽车租赁", "鞋帽"];
-    // let count = delete_keyword_data(keyword, &total_file_path, &target_file_path, true, 12);
+    // let keyword = vec!["旅行社", "船舶", "法律", "汽车客运", "旅客运输"];
+    // let keyword =  vec!["贸易有限公司", "商贸有限公司", "生物科技", "国际旅游", "农业发展", "餐饮管理","金属材料", "汽车运输", "旅游集散中心",
+    //                             "职业技术学院", "汽车服务", "客运有限公司", "杂志社", "航空客户运输", "户外协会","汽车租赁", "旅游车队","服饰","农场",
+    //                             "摄影家协会","农林投资","研究会","房车","游艇","影视制作","游客服务中心","五金","商务服务", "中心", "纪念品", "公益", 
+    //                             "航空", "学院", "生态", "农业"];
+    // let count = delete_keyword_data(keyword, &total_file_path, &target_file_path, true, 1);
     
-    // 去重是搜索生成文件
+    // 去重式搜索生成文件
     // let mut keyword_map = BTreeMap::new();
     // let mut tfp_map = BTreeMap::new();
     // keyword_map.insert("1guihua", guihua_keyword);
@@ -724,9 +864,9 @@ fn main() {
     let cost_time = end_time.duration_since(start_time);
     println!("耗时{:?}", cost_time);
     // println!("{:#?}", result);
-    // println!("共生成 {} 条数据", total);
+    println!("共生成 {} 条数据", count);
 
 
-    println!("一共有 {} 条数据生成， 新增 {} 条数据, 独立来源 {}", count, new, union);
+    // println!("一共有 {} 条数据生成， 新增 {} 条数据, 独立来源 {}", count, new, union);
     // println!("一共有 {} 条数据生成， 新增 {} 条数据", count, new);
 }
