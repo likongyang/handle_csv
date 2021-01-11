@@ -1,4 +1,4 @@
-# handle csv by rust
+# handle csv by rust   [![Rust Report Card](https://rust-reportcard.xuri.me/badge/github.com/likongyang/handle_csv)](https://rust-reportcard.xuri.me/report/github.com/likongyang/handle_csv)
 #### 对csv文件之间的处理，含补集、并集、交集指定关键字在列中的搜索，最终生成新的文件
 功能说明：
 - 单个csv文件和一个汇总文件之间的补集（即汇总文件中不含单个csv文件中的条目）
